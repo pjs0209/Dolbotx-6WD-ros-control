@@ -103,28 +103,47 @@ hardware platform to embedded control and ROS-based autonomy.
 
 ### 1.3 Real Driving Videos
 
+## ▶ Main Field Demonstration
+
 <p align="center">
-  <img src="docs/gifs/main.gif" width="80%" alt="Main Driving Demo">
+  <img src="docs/gifs/main.gif" width="85%" alt="Main Driving Demo">
 </p>
 
 <p align="center">
-  <b>Real Robot Field Driving Demonstrations</b>
+  <b>Full System Field Demonstration</b><br>
+  Actual field driving
 </p>
 
----
+<br>
+
+## ▶ Sub Driving Tests
 
 <p align="center">
-  <img src="docs/gifs/Rough_driving.gif" width="32%" alt="Rough Terrain">
-  <img src="docs/gifs/Flat_driving.gif" width="32%" alt="Flat Terrain">
-  <img src="docs/gifs/Multiarea_driving.gif" width="32%" alt="Multi Area">
+  <img src="docs/gifs/Rough_driving.gif" width="50%" alt="Rough Terrain">
 </p>
 
 <p align="center">
-  <sub>
-  Rough Terrain &nbsp;&nbsp;|&nbsp;&nbsp;
-  Flat Terrain &nbsp;&nbsp;|&nbsp;&nbsp;
-  Multi-Area Driving
-  </sub>
+  Rough Terrain Driving Test
+</p>
+
+<br>
+
+<p align="center">
+  <img src="docs/gifs/Flat_drivig.gif" width="50%" alt="Flat Terrain">
+</p>
+
+<p align="center">
+  Flat Terrain Speed Test
+</p>
+
+<br>
+
+<p align="center">
+  <img src="docs/gifs/Multiarea_driving.gif" width="50%" alt="Multi Area">
+</p>
+
+<p align="center">
+  Multi-Area Autonomous Driving
 </p>
 
 ---
