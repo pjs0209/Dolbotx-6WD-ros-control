@@ -104,23 +104,28 @@ hardware platform to embedded control and ROS-based autonomy.
 ### 1.3 Real Driving Videos
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=69BXtWKU-2o">
-    <img src="docs/images/thumbnail.jpg" width="60%" alt="Demo Video">
-  </a>
+  <img src="docs/gifs/main.gif" width="80%" alt="Main Driving Demo">
 </p>
 
 <p align="center">
-  <b>Click the image to watch the full demo video</b>
+  <b>Real Robot Field Driving Demonstrations</b>
 </p>
 
-Driving demonstrations include:
+---
 
-- Rough terrain driving  
-- Flat terrain driving  
-- Multi-area autonomous driving  
+<p align="center">
+  <img src="docs/gifs/Rough_driving.gif" width="32%" alt="Rough Terrain">
+  <img src="docs/gifs/Flat_driving.gif" width="32%" alt="Flat Terrain">
+  <img src="docs/gifs/Multiarea_driving.gif" width="32%" alt="Multi Area">
+</p>
 
-YouTube:  
-https://www.youtube.com/watch?v=69BXtWKU-2o
+<p align="center">
+  <sub>
+  Rough Terrain &nbsp;&nbsp;|&nbsp;&nbsp;
+  Flat Terrain &nbsp;&nbsp;|&nbsp;&nbsp;
+  Multi-Area Driving
+  </sub>
+</p>
 
 ---
 
