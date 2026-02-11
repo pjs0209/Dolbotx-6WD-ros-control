@@ -1,470 +1,479 @@
-
-```md
-# DolbotX 6WD Real-Robot Control Stack (ROS2 ↔ Arduino PID Drive)
-
-> A competition-grade real-robot control stack for a 6-wheel differential drive platform.  
-> High-level commands from ROS2 are converted into left/right wheel velocity targets and streamed over serial to an Arduino Mega that runs a **closed-loop PID speed controller** (encoder feedback) and drives all six motors.
+# DolbotX-6WD ROS2 Real Robot Control Stack
+**Closed-loop PID Drive (Arduino Mega) + Robust Serial Bridges + Target Following**
 
 ---
 
-## ✨ Key Features (Portfolio Highlights)
+## 0. What this repository is
 
-- **Real robot deployment** (not simulation-only): ROS2 → serial → embedded motor control
-- **Closed-loop wheel speed control** using encoder feedback + **PID** (with anti-windup)
-- **Deterministic control loop** at **50 Hz** (`CONTROL_MS = 20 ms`)
-- **Robust serial parsing** (line-based, non-blocking buffer)
-- **Fail-safe behaviors**:
-  - stop until first valid command is received
-  - (test firmwares) command watchdog timeout
-  - low-speed deadzone + minimum PWM suppression
-- **LED status subsystem** for competition state feedback (friend/enemy/none)
+This repository is the **real-robot control layer** of a 6WD differential-drive robot used in competition environments.
 
----
+It bridges:
+- ROS2 high-level outputs (steering angle / target position / state)
+→ **wheel velocity setpoints**
+→ **serial streaming**
+→ Arduino Mega running a **closed-loop PID wheel speed controller** (encoder feedback)
+→ 6 motors (3 left, 3 right)
 
-## 📸 Media
-
-### Robot
-![robot](docs/images/robot_photo_1.jpg)
-
-### Award
-![award](docs/images/award_photo.jpg)
-
-### Videos
-- Rough terrain driving: (add link)
-- Flat terrain driving: (add link)
-- Multi-area autonomous driving (YouTube): https://www.youtube.com/watch?v=69BXtWKU-2o
+It also includes:
+- LED state feedback via a dedicated Arduino LED controller
+- An object follower (3D target → wheel velocities)
+- A steering-to-differential converter (Ackermann-style steering angle → wheel speeds)
+- A robust wheel serial bridge with auto-reconnect and safety timeouts
 
 ---
 
-## 🧠 System Architecture
+## 1. Media
 
-### End-to-End Pipeline
+### 1.1 Robot Platform
 
+<p align="center">
+  <img src="docs/images/robot.jpg" width="50%" alt="Robot Platform">
+</p>
+
+**DolbotX** is a 6WD differential-drive unmanned ground vehicle (UGV) designed for  
+rough-terrain mobility, modular deployment, and real-world robotic missions.
+
+Key features:
+
+- 6WD rocker-bogie inspired terrain driving structure  
+- Obstacle traversal capability up to ~0.25 m  
+- Modular 3D-printed mechanical design  
+- ROS2-based real robot control architecture  
+- Encoder-based closed-loop PID wheel velocity control  
+- Dual-arm manipulator integration  
+- Vision-based target detection and following  
+- LED-based robot state feedback system  
+
+The platform was developed with a **low-cost, field-repairable tactical robot concept**,  
+allowing rapid component replacement and repeated deployment in real environments.
+
+Closed-loop encoder-based PID control ensures stable velocity tracking under:
+
+- rough terrain  
+- slope changes  
+- battery voltage variation  
+- asymmetric wheel load  
+
+This project demonstrates a full-stack real robot system integrating  
+mechanical design, embedded control, and ROS2-based autonomy.
+
+---
+
+### 1.2 Competition & Award
+
+<p align="center">
+  <img src="docs/images/award.jpg" width="50%" alt="Competition Award">
+</p>
+
+This robot was developed for and demonstrated at the  
+**Korea Intelligent Robot Competition – Defense Robot Division**,  
+organized by the Korea Institute of Robotics & Technology Convergence (KIRO).
+
+Competition details:
+
+- Organizer: Korea Institute of Robotics & Technology Convergence (KIRO)  
+- Event: Korea Intelligent Robot Competition  
+- Division: Defense Robotics  
+- Focus:
+  - real robot mobility in rough environments  
+  - autonomous navigation capability  
+  - mission-based robotic operation  
+  - field deployment scenarios  
+
+The defense robotics division evaluates robot systems in  
+practical mission-like environments including terrain traversal,  
+autonomous driving, and real-world deployment capability.
+
+Our team successfully demonstrated:
+
+- rough-terrain robot driving  
+- ROS2-based control integration  
+- modular robotic architecture  
+- real hardware deployment  
+
+This project represents an end-to-end implementation from  
+hardware platform to embedded control and ROS-based autonomy.
+
+---
+
+### 1.3 Real Driving Videos
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=69BXtWKU-2o">
+    <img src="docs/images/thumbnail.jpg" width="60%" alt="Demo Video">
+  </a>
+</p>
+
+<p align="center">
+  <b>Click the image to watch the full demo video</b>
+</p>
+
+Driving demonstrations include:
+
+- Rough terrain driving  
+- Flat terrain driving  
+- Multi-area autonomous driving  
+
+YouTube:  
+https://www.youtube.com/watch?v=69BXtWKU-2o
+
+---
+
+## 2. System Architecture
+
+### 2.1 End-to-End Pipeline
+
+```txt
+[Perception / Planner / Mission]
+        |
+        |  (steering angle, target position, traffic stop/go, etc.)
+        v
+[ROS2 Control Nodes]
+  - steering_to_diff (angle -> v_left/v_right)
+  - object_follower (target -> v_left/v_right)
+        |
+        |  /cmd_vel_left, /cmd_vel_right  (m/s)
+        v
+[wheel_serial_bridge_unified]
+        |
+        |  Serial: "VL <L> <R>\n"
+        v
+[Arduino Mega: DolbotX_Wheel_Control.ino]
+  - Encoder feedback (M1, M4)
+  - Closed-loop PID speed control @ 50 Hz
+  - PWM+DIR outputs to 6 motors
+        v
+[Physical robot]
+````
+
+### 2.2 LED Feedback Pipeline
+
+```txt
+Vision / State Decision
+        |
+        | /led_control (std_msgs/String)
+        v
+led_serial_bridge
+        |
+        | Serial: "<cmd>\n"  where cmd ∈ {roka, enemy, none}
+        v
+Arduino LED_Control.ino
 ```
 
-Perception / Planner (ROS2)
-↓
-Wheel velocity targets (m/s)
-↓
-Serial packet stream (USB)
-↓
-Arduino Mega (PID speed control @ 50 Hz)
-↓
-Motor drivers → 6 motors (3 left, 3 right)
-↓
-Physical robot motion
-
-```
-
-### Hardware Split
-
-- **Host PC / Jetson**: perception + decision + ROS2 nodes
-- **Arduino Mega**: motor control loop (encoders + PID + PWM)
-- **Arduino (LED)**: simple LED state machine via serial strings
-
 ---
 
-## 📂 Repository Structure
+## 3. Repository Structure (relevant parts)
 
-```
-
+```txt
 Arduino/
-├── DolbotX_Wheel_Control/     # Main 6WD controller (Mega): VL <L> <R>\n
-├── LED_Control/              # LED controller: "roka" / "enemy" / "none"
-├── LEFT_MOTOR_FINAL/         # Left-side standalone PID test (VL...)
-└── RIGHT_MOTOR_FINAL/        # Right-side standalone PID test (VR...)
+├── DolbotX_Wheel_Control.ino       # main 6WD PID controller (Arduino Mega)
+├── LED_Control.ino                 # LED command receiver (roka/enemy/none)
+├── LEFT_MOTOR_FINAL.ino            # left-side PID test w/ watchdog + EMA
+└── RIGHT_MOTOR_FINAL.ino           # right-side PID test w/ watchdog + EMA
 
 src/
-├── steering_to_diff/
-├── wheel_serial_bridge/
-├── serial_bridge/
-├── object_follower/
-└── led_serial_bridge/
-
-docs/images/
-├── ros_graph.png
-├── robot_photo_1.jpg
-└── award_photo.jpg
-
+├── led_serial_bridge.py            # /led_control -> serial
+├── object_follower.py              # /target_xy -> /cmd_vel_left/right
+├── steering_to_diff.py             # /steering_angle (+ optional speed) -> /cmd_vel_left/right
+└── wheel_serial_bridge_unified.py  # /cmd_vel_left/right -> serial "VL L R\n" (+ optional RX)
 ```
+
+> Note: A provided `serial_bridge_node.py` subscribes `/joint_states/joint2`, `/joint_states/joint3`, `/gripper_command`.
+> This looks like a different project (robot arm) and is not part of the 6WD drive pipeline.
+> I keep it as a “legacy/other” utility, not a core component of the mobile base.
 
 ---
 
-# 🔌 Serial Protocol (Exact)
+## 4. Serial Protocol (Exact)
 
-## 1) Motor Controller (Arduino Mega) — `DolbotX_Wheel_Control.ino`
+### 4.1 Wheel Controller Protocol (ROS2 → Arduino Mega)
 
-- **Baudrate**: `57600`
-- **Packet format (line-based)**:
+**TX packet (wheel command)**
+Exact format:
 
-```
-
-VL <left_velocity_mps> <right_velocity_mps>\n
-
+```txt
+VL <left_mps> <right_mps>\n
 ```
 
 Example:
+
+```txt
+VL 0.500 -0.500\n
 ```
 
-VL 0.5 -0.5\n
+* `left_mps`, `right_mps`: wheel-side linear velocity targets in **m/s**
+* Arduino parses line by newline, tokenizes by spaces
 
-```
+Baudrate:
 
-- Parsing method:
-  - non-blocking char buffer (size 64)
-  - newline terminates a command
-  - tokens parsed with `strtok()` + `atof()`
-
-✅ A command is considered **valid** only when both velocities are parsed.
+* Arduino Mega: `57600`
+* ROS wheel bridge default: `57600`
 
 ---
 
-## 2) LED Controller — `LED_Control.ino`
+### 4.2 LED Controller Protocol (ROS2 → LED Arduino)
 
-- **Baudrate**: `115200`
-- **Commands** (case-insensitive, whitespace-trimmed):
+**TX packet (LED command)**
+Exact format:
 
-| Command | Action |
-|---|---|
-| `roka`  | Green ON, Red OFF |
-| `enemy` | Red ON, Green OFF |
-| `none` or others | Both OFF |
-
-Line-based:
+```txt
+<cmd>\n
 ```
 
-<command>\n
+Where:
 
+* `cmd ∈ {"roka", "enemy", "none"}`
+* Node enforces lowercase + trim and rejects unknown commands
+
+Baudrate:
+
+* LED Arduino: `115200`
+* ROS LED bridge default: `115200`
+
+---
+
+### 4.3 Optional RX protocol (Arduino → ROS2)
+
+`wheel_serial_bridge_unified.py` supports parsing:
+
+```txt
+FB <rpmL> <rpmR>\n
+```
+
+and publishes:
+
+* `wheel_rpm_left` (Float32)
+* `wheel_rpm_right` (Float32)
+
+> Current Arduino main firmware shown here does not output `FB ...`.
+> If you add feedback prints later, this RX channel is already prepared.
+
+---
+
+## 5. Arduino Motor Control (Deep Dive)
+
+### 5.1 Hardware topology: 6WD differential groups
+
+* Left motors: `M1 (encoder)`, `M2`, `M3`
+* Right motors: `M4 (encoder)`, `M5`, `M6`
+
+Only one encoder per side is used:
+
+* left feedback: `M1_ENC_A/B`
+* right feedback: `M4_ENC_A/B`
+
+Direction conventions in `DolbotX_Wheel_Control.ino`:
+
+Left side:
+
+* `M1 = +cmdL`
+* `M2 = -cmdL`
+* `M3 = -cmdL`
+
+Right side:
+
+* `M4 = +cmdR`
+* `M5 = -cmdR`
+* `M6 = -cmdR`
+
+This compensates for motor mounting direction differences.
+
+---
+
+### 5.2 Deterministic control loop timing
+
+* Control period: `CONTROL_MS = 20 ms`
+* Loop rate: `50 Hz`
+* Triggered by `MsTimer2` interrupt setting `flag_Control`.
+
+---
+
+### 5.3 Encoder measurement (counts → RPM)
+
+Main firmware constants:
+
+* `PULSES_PER_REV = 350`
+* `dt = 0.02 s`
+
+Motor RPM:
+
+```txt
+RPM_motor = (cnt / PULSES_PER_REV) * (60 / dt)
+```
+
+Wheel RPM using gear ratio:
+
+* `GEAR_RATIO = 1/71` (motor → wheel)
+
+```txt
+RPM_wheel = RPM_motor * (1/71)
 ```
 
 ---
 
-## 3) Standalone Motor Test Firmwares
+### 5.4 Velocity conversion: m/s ↔ wheel RPM (Exact)
 
-### RIGHT — `RIGHT_MOTOR_FINAL.ino`
-- **Baudrate**: `57600`
-- Accepts:
+Wheel parameters:
+
+* `WHEEL_DIAM = 0.135 m`
+* `wheel_circ = pi * WHEEL_DIAM`
+
+Target wheel RPM from target velocity `v` [m/s]:
+
+```txt
+RPM_target = (v / wheel_circ) * 60
 ```
-
-VR<velocity_mps>\n
-VR <velocity_mps>\n
-
-```
-(`atof(serialBuffer + 2)` tolerates leading spaces)
-
-### LEFT — `LEFT_MOTOR_FINAL.ino`
-- **Baudrate**: `57600`
-- Accepts:
-```
-
-VL<velocity_mps>\n
-VL <velocity_mps>\n
-
-````
 
 ---
 
-# ⚙️ Arduino Motor Control (Deep Dive)
-
-## A) Motor / Encoder Topology (6WD Differential)
-
-The robot is driven as two motor groups:
-
-- **Left side**: M1 (encoder), M2, M3
-- **Right side**: M4 (encoder), M5, M6
-
-Only **one encoder per side** is used in closed-loop feedback:
-- left feedback: **M1 encoder**
-- right feedback: **M4 encoder**
-
-The remaining motors are driven with the **same control command** as the encoder motor (with direction inversion as needed).
-
-### Direction Mapping (Important)
-
-In main controller (`DolbotX_Wheel_Control.ino`):
-
-- Left:
-  - `M1` uses `+cmdL`
-  - `M2`, `M3` use `-cmdL` (hardware mounting inverted)
-
-- Right:
-  - `M4` uses `+cmdR`
-  - `M5`, `M6` use `-cmdR`
-
----
-
-## B) Deterministic Control Loop Timing
-
-- Timer: `MsTimer2`
-- Period: `CONTROL_MS = 20 ms`
-- Loop runs when `flag_Control == true`
-
-So control frequency:
-\[
-f = \frac{1}{0.02} = 50\ \text{Hz}
-\]
-
----
-
-## C) Velocity/RPM Conversion (Exact)
-
-Constants (main controller):
-
-- `WHEEL_DIAM = 0.135 m`
-- \[
-WHEEL\_CIRC = \pi \cdot WHEEL\_DIAM
-\]
-- `GEAR_RATIO = 1/71` (motor → wheel)
-
-### 1) Target wheel RPM from target velocity (m/s)
-
-Given target velocity \( v \) [m/s]:
-\[
-RPM_{target} = \frac{v}{WHEEL\_CIRC} \cdot 60
-\]
-
-Implemented as:
-```cpp
-targetRPM = vel_mps * 60.0 / WHEEL_CIRC;
-````
-
-### 2) Measured motor RPM from encoder counts
-
-Encoder counts in one control window (dt):
-
-* `PULSES_PER_REV = 350` (main firmware)
-* Measured motor RPM:
-  [
-  RPM_{motor} = \frac{cnt}{PULSES_PER_REV} \cdot \frac{60}{dt}
-  ]
-
-Implemented as:
-
-```cpp
-motorRPM = (cnt / (double)PULSES_PER_REV) * (60.0 / dt_s);
-```
-
-### 3) Wheel RPM from motor RPM via gear ratio
-
-[
-RPM_{wheel} = RPM_{motor} \cdot GEAR_RATIO
-]
-where `GEAR_RATIO = 1/71`.
-
----
-
-## D) PID Controller (Exact Equation + Anti-windup)
-
-### PID Equation
+### 5.5 PID Controller (Exact equation + anti-windup)
 
 Error:
-[
-e(t) = RPM_{target} - RPM_{wheel}
-]
 
-Integral:
-[
-I(t) = I(t-\Delta t) + e(t)\Delta t
-]
-with anti-windup clamp:
-[
-I(t) \in [-I_{max},\ I_{max}]
-]
-(`I_MAX = 3000`)
+```txt
+error = RPM_target - RPM_wheel
+```
+
+Integral (anti-windup):
+
+```txt
+integral += error * dt
+integral = clamp(integral, -I_MAX, +I_MAX)   (I_MAX = 3000)
+```
 
 Derivative:
-[
-D(t) = \frac{e(t) - e(t-\Delta t)}{\Delta t}
-]
 
-Output command (pre-saturation):
-[
-u(t) = K_P e(t) + K_I I(t) + K_D D(t)
-]
+```txt
+derivative = (error - prev_error) / dt
+```
 
-### Main 6WD firmware gains
+Output:
+
+```txt
+u = Kp*error + Ki*integral + Kd*derivative
+```
+
+Main 6WD firmware gains:
 
 * `KP = 0.8`
 * `KI = 0.0`
 * `KD = 0.0`
 
-So in the current main firmware configuration, PID is effectively **P-control** (I/D disabled), but the structure supports full PID.
+So the main controller currently behaves as **P-control** (PID structure ready).
+
+Standalone test gains (emphasized PID, PI control):
+
+LEFT_MOTOR_FINAL.ino
+
+* `KP = 2.8`
+* `KI = 3.4`
+* `KD = 0.0`
+* `PULSES_PER_REV = 324`
+
+RIGHT_MOTOR_FINAL.ino
+
+* `KP = 3.0`
+* `KI = 2.9`
+* `KD = 0.0`
+* `PULSES_PER_REV = 324`
 
 ---
 
-## E) PWM Mapping + Saturation (Exact)
+### 5.6 EMA Low-pass filter (used in test firmwares)
 
-### 1) Command saturation (main firmware)
+To reduce RPM noise before applying PID:
 
-After PID:
-
-```cpp
-cmd = constrain(cmd, -200, 200);
+```txt
+RPM_filt = alpha*RPM + (1-alpha)*RPM_filt
+alpha = 0.3
 ```
-
-So:
-[
-u \in [-200, 200]
-]
-
-### 2) PWM generation (driveMotor)
-
-PWM is computed as:
-[
-PWM = round(|u|)
-]
-
-Then:
-
-* cap:
-
-  * main firmware: `PWM ≤ 200`
-  * test firmwares: `PWM ≤ 250`
-* deadzone:
-
-  * if `PWM < 15` → `PWM = 0` (prevents weak buzzing / no-motion)
-
-Direction:
-
-* `cmd >= 0` → `DIR = HIGH`
-* `cmd < 0` → `DIR = LOW`
 
 ---
 
-## F) Low-speed Stop Logic (Exact)
+### 5.7 Safety and practical behavior
 
-In main firmware:
+(A) Stop until first valid command
 
-* if target velocity magnitude is small:
+* If no valid `VL ...` command has been parsed (`velReceived == false`), motors stay at 0.
 
-```cpp
-if (fabs(vel_left_Sub) <= 0.05) cmdL = 0;
-if (fabs(vel_right_Sub) <= 0.05) cmdR = 0;
-```
+(B) Command deadzone (m/s)
 
-So:
+* If `abs(v) <= 0.05 m/s`, command is forced to 0.
 
-* if (|v| \le 0.05\ m/s) → full stop
+(C) PWM saturation and deadzone
 
----
+* `PWM = round(abs(u))`
+* Saturation: main clamps to 200, tests clamp to 250
+* Deadzone: if `PWM < 15` → `PWM = 0`
 
-## G) Safety Behaviors
-
-### Main 6WD firmware
-
-* **No command received yet** → motors stay stopped forever until first valid `VL ...` is received:
-
-```cpp
-if (!velReceived) { stop all; return; }
-```
-
-### Standalone test firmwares (LEFT/RIGHT)
-
-Additional robustness:
-
-1. **Command watchdog**:
+(D) Watchdog timeout (test firmwares)
 
 * `CMD_TIMEOUT_MS = 300 ms`
-* if timeout → stop all motors
+* If no command arrives within 300 ms → stop immediately.
 
-2. **EMA filter on RPM** (noise reduction before PID):
+---
 
-[
-RPM_{filt} = \alpha RPM + (1-\alpha) RPM_{filt}
-]
+## 6. ROS2 Nodes (Exact I/O, Parameters, Equations)
 
-* `RPM_ALPHA = 0.3`
+### 6.1 led_serial_bridge (ROS2 → LED Arduino)
 
-3. **Integral reset on new command**:
+ROS I/O:
 
-* prevents windup when velocity steps occur:
+* Subscribe: `/led_control` (`std_msgs/String`) *(param `topic`)*
+* Serial TX: `"<cmd>\n"` where cmd ∈ `{roka, enemy, none}`
 
-```cpp
-integral = 0; prevErr = 0;
+Parameters:
+
+| Name                 |        Default | Meaning                       |
+| -------------------- | -------------: | ----------------------------- |
+| `port`               |     `/dev/LED` | serial device for LED Arduino |
+| `baud`               |       `115200` | must match LED_Control.ino    |
+| `reopen_interval_ms` |         `1000` | auto reconnect interval       |
+| `debug_tx`           |        `false` | log transmitted commands      |
+| `topic`              | `/led_control` | subscribe topic               |
+
+Stabilization points:
+
+* auto port reconnection
+* `exclusive=True` to avoid multi-open on Linux
+* disable `DTR/RTS` to reduce Arduino auto-reset
+* optional RX logging thread
+
+---
+
+### 6.2 wheel_serial_bridge_unified (ROS2 → Arduino Mega)
+
+ROS I/O:
+
+* Subscribe: `cmd_vel_left`, `cmd_vel_right` (`std_msgs/Float32`) [m/s]
+* Publish (optional RX): `wheel_rpm_left`, `wheel_rpm_right` (`std_msgs/Float32`)
+
+Serial TX (periodic):
+
+```txt
+VL <L:.3f> <R:.3f>\n
 ```
 
----
+Parameters:
 
-# 💡 PID Tuning Notes (Emphasized)
+| Name                 |        Default | Meaning                              |
+| -------------------- | -------------: | ------------------------------------ |
+| `port`               | `/dev/ttyACM0` | Arduino Mega serial port             |
+| `baud`               |        `57600` | must match DolbotX_Wheel_Control.ino |
+| `tx_rate_hz`         |         `50.0` | periodic streaming rate              |
+| `idle_timeout_ms`    |          `200` | if no topic updates -> force (0,0)   |
+| `reopen_interval_ms` |         `1000` | auto reconnect                       |
+| `debug_tx`           |        `false` | log TX lines                         |
 
-### Why PID matters here
+Safety policy:
 
-* DC motor speed under load varies significantly (terrain, battery sag, friction).
-* A velocity command without feedback becomes inconsistent.
-* Encoder-based closed-loop PID ensures wheel speeds track targets reliably even in rough terrain.
-
-### Practical tuning workflow (what I used / recommend)
-
-1. **Start with P-only**
-
-   * Increase (K_P) until you get fast response but not oscillation.
-
-2. **Add I to remove steady-state error**
-
-   * Increase (K_I) gradually.
-   * Keep anti-windup clamp (already implemented via `I_MAX`).
-
-3. **Add EMA filtering if encoder RPM is noisy**
-
-   * `RPM_ALPHA` higher → faster response, noisier.
-   * `RPM_ALPHA` lower → smoother, slower.
-
-4. Validate using Serial Plotter
-
-* Output:
-
-  * target velocity
-  * actual velocity
-  * command PWM
-
-(LEFT/RIGHT test codes already include commented Serial plot lines)
+* If either left or right command becomes stale → send `VL 0.000 0.000\n`
 
 ---
 
-# 🟦 ROS2 Layer (What must match Arduino)
+## 7. Build & Run
 
-> The ROS2 nodes must output wheel velocity targets in **m/s**, and the bridge must send the exact serial format required by the Arduino.
-
-### Requirements to be compatible with Arduino main firmware
-
-* Must send:
-
-```
-VL <left_mps> <right_mps>\n
-```
-
-* Must use serial port at `57600`
-* Update fast enough (recommended ≥ 10–20 Hz; control loop is 50 Hz)
-
-### LED bridge requirements
-
-* Must send one of:
-
-  * `roka\n`
-  * `enemy\n`
-  * `none\n`
-    at `115200`
-
----
-
-## ✅ What I will fill in once ROS code is provided
-
-From `src/steering_to_diff`, `src/wheel_serial_bridge`, `src/serial_bridge`, `src/object_follower`, `src/led_serial_bridge`, I will extract:
-
-* **Exact topic names**
-* **Message types**
-* **Parameters** (wheelbase, track width, max speed, serial port, baudrate, scaling, etc.)
-* **Control equations** used:
-
-  * differential kinematics
-  * follower control law (distance/heading)
-* Launch structure and node graph
-
-(Arduino side is now fully analyzed and finalized.)
-
----
-
-# 🔧 Build (ROS2 Humble)
+### 7.1 Build (ROS2 Humble)
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -472,33 +481,36 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
+### 7.2 Run (recommended flows)
+
+A) Steering-based driving
+
+1. `steering_to_diff` publishes `/cmd_vel_left/right`
+2. wheel bridge sends `VL L R\n` to Arduino
+
+```bash
+ros2 run <pkg> steering_to_diff
+ros2 run <pkg> wheel_serial_bridge_unified
+```
+
+B) Target following (object follower)
+
+```bash
+ros2 run <pkg> object_follower
+ros2 run <pkg> wheel_serial_bridge_unified
+```
+
+C) LED bridge
+
+```bash
+ros2 run <pkg> led_serial_bridge
+```
+
+> Replace `<pkg>` with your package names.
+
 ---
 
-# 🚀 Run
-
-Core pipeline (example):
-
-```bash
-ros2 launch steering_to_diff steering_to_diff.launch.py
-ros2 launch wheel_serial_bridge bridge.launch.py
-ros2 run led_serial_bridge led_serial_bridge
-```
-
-Teleop (optional):
-
-```bash
-ros2 run serial_bridge serial_bridge_node
-```
-
-Follower (optional):
-
-```bash
-ros2 launch object_follower object_follower.launch.py
-```
-
----
-
-# 🔌 Serial Device Setup
+## 8. Serial Device Setup (Linux)
 
 ```bash
 ls /dev/ttyUSB* /dev/ttyACM*
@@ -507,57 +519,75 @@ sudo usermod -aG dialout $USER
 
 Re-login required.
 
----
-
-# 🧪 Troubleshooting
-
-### Motors don’t move
-
-* confirm valid serial command arrives (must end with `\n`)
-* verify baudrate `57600`
-* check driver enable pins are HIGH (start_pin1~6)
-* check deadzone (`PWM < 15` → 0)
-
-### Robot stops unexpectedly (test firmware)
-
-* watchdog timeout is **300 ms**
-* ensure commands stream continuously
-
-### Unstable speed / oscillation
-
-* reduce `KP`
-* reduce `KI` or increase integral clamp strictness
-* lower `RPM_ALPHA` for more filtering
+Recommended: use stable symlinks such as `/dev/serial/by-id/*` or udev rules.
 
 ---
 
-# 👤 Author Contribution
+## 9. PID Emphasis: Why it matters & how it was tuned
 
-* Designed the real-robot ROS2 ↔ Arduino architecture
-* Implemented serial command protocol and robust parsing
-* Built encoder-based **PID wheel speed control**
-* Added field safety behaviors and test firmwares
-* Integrated LED feedback subsystem for competition
+Why encoder-based PID is critical:
+
+* open-loop PWM fails under load changes (terrain, slope, battery sag)
+* PID closes the loop using encoder speed feedback
+
+Practical tuning strategy:
+
+* start with P-only
+* add integral to remove steady-state error
+* clamp integral (`I_MAX`) to prevent windup
+* filter RPM (EMA) if noisy
+* add watchdog timeouts for fail-safe stop
 
 ---
 
-# 📜 License
+## 10. Troubleshooting (field-ready)
+
+Robot does not move:
+
+* confirm wheel bridge is sending `VL <L> <R>\n` (newline required)
+* check baudrate match: wheel `57600`
+* ensure driver enable pins are HIGH (start_pin1~6)
+* PWM < 15 is forced to 0 (deadzone)
+
+Robot suddenly stops (wheel bridge):
+
+* `idle_timeout_ms = 200 ms`
+* stale topics → forced (0,0)
+
+Robot suddenly stops (test firmwares):
+
+* watchdog timeout = 300 ms
+
+Unstable speed / oscillation:
+
+* reduce KP / KI
+* lower RPM_ALPHA for stronger filtering
+* verify encoder wiring and pulses-per-rev
+
+---
+
+## 11. Author Contribution (portfolio)
+
+* Designed ROS2 ↔ Arduino architecture for real robot control
+* Implemented robust serial bridges:
+
+  * auto reconnect
+  * exclusive port lock
+  * disable DTR/RTS to reduce resets
+  * stale-command safety
+* Built encoder-based PID (PI) speed control with:
+
+  * anti-windup
+  * low-speed deadzones
+  * PWM saturation/deadzone
+  * EMA filtering (test rigs)
+  * watchdog timeouts (test rigs)
+* Integrated LED state feedback
+* Implemented target-following and steering-to-diff conversion logic
+
+---
+
+## License
 
 MIT
 
-```
-
----
-
-## 다음으로 “ROS 노드 코드 분석(토픽/파라미터/제어식)”까지 **진짜 확정**하려면
-너가 원하는 2번(ROS 노드 분석)은 **`src/` 안의 실제 파이썬 파일 내용**이 필요해.  
-여기 대화에 아래 파일들만 그대로 붙여줘 (혹은 최소한 주요 노드 파일들):
-
-- `src/wheel_serial_bridge/**` (시리얼 포맷 송신부 핵심)
-- `src/steering_to_diff/**` (차동 변환 수식/파라미터 핵심)
-- `src/led_serial_bridge/**` (LED 문자열 송신 확인)
-- (있으면) `src/object_follower/**`, `src/serial_bridge/**`
-
-그럼 위 README에서 **ROS 섹션을 “정확한 토픽명/타입/파라미터 표 + 제어식 + 런치 플로우 + rqt_graph 기준”**으로 완성해서, Mandol_ws/DolbotX급으로 한 번에 최종본 다시 만들어줄게.
-::contentReference[oaicite:0]{index=0}
-```
