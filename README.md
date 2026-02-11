@@ -1,3 +1,14 @@
+## Original Project
+
+This repository is derived from and inspired by the original DolbotX project.
+
+Original full repository:  
+https://github.com/Highsky7/DolbotX
+
+This repository focuses specifically on the real-robot control stack,
+including ROS2–Arduino integration, PID motor control, and field deployment.
+
+
 # DolbotX-6WD ROS2 Real Robot Control Stack
 **Closed-loop PID Drive (Arduino Mega) + Robust Serial Bridges + Target Following**
 
