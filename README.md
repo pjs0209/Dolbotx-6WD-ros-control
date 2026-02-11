@@ -469,6 +469,420 @@ Safety policy:
 
 * If either left or right command becomes stale → send `VL 0.000 0.000\n`
 
+
+---
+
+## 6.3 ROS2 Node Internal Logic (Detailed)
+
+This section provides a deeper explanation of each ROS2 node implementation,  
+including control flow, internal state handling, and safety design.
+
+These nodes were written specifically for **real robot deployment**,  
+not just simulation.
+
+---
+
+### 6.3.1 wheel_serial_bridge_unified.py (core real-robot bridge)
+
+This node is the **critical interface between ROS2 and Arduino Mega**.
+
+It converts ROS2 wheel velocity topics into a deterministic serial stream.
+
+#### Internal architecture
+
+```
+
+ROS2 topic input
+↓
+store latest left/right velocity
+↓
+timer loop @ tx_rate_hz
+↓
+build serial packet
+↓
+write to Arduino
+↓
+(optional RX parse thread)
+
+```
+
+#### Internal state variables
+
+- `left_cmd`  
+- `right_cmd`
+- `last_left_time`
+- `last_right_time`
+- `serial_connected`
+
+Each velocity is stored with its **timestamp** to detect stale commands.
+
+---
+
+#### Safety: stale command detection
+
+If either wheel command is not updated within:
+
+```
+
+idle_timeout_ms = 200 ms
+
+```
+
+then the node forces:
+
+```
+
+VL 0.000 0.000\n
+
+````
+
+This prevents:
+
+- ROS crash runaway
+- planner freeze
+- unplugged USB cable
+- topic drop
+
+This behavior is essential for real robot safety.
+
+---
+
+#### Serial reliability features
+
+The node includes:
+
+- automatic port reopen
+- exclusive serial lock
+- disabled DTR/RTS
+- reconnect loop
+- optional debug logging
+
+Pseudo logic:
+
+```python
+if serial_port_closed:
+    try_reconnect()
+
+if new_velocity_received:
+    update_internal_state()
+
+every timer tick:
+    if stale:
+        send_zero()
+    else:
+        send_velocity()
+````
+
+---
+
+#### Packet formatting (exact)
+
+```python
+line = f"VL {left:.3f} {right:.3f}\n"
+```
+
+Precision fixed to 3 decimal places to ensure:
+
+* deterministic parsing
+* fixed message length
+* reduced serial jitter
+
+---
+
+#### Optional feedback parsing thread
+
+If Arduino prints:
+
+```
+FB <rpmL> <rpmR>\n
+```
+
+the node parses and publishes:
+
+* `/wheel_rpm_left`
+* `/wheel_rpm_right`
+
+This is useful for:
+
+* logging
+* tuning PID
+* real-time monitoring
+
+---
+
+### 6.3.2 steering_to_diff.py (steering → differential conversion)
+
+This node converts a **steering angle** into differential wheel velocities.
+
+It allows integration with:
+
+* joystick steering
+* planner output
+* vision-based steering
+* teleop
+
+---
+
+#### Control loop structure
+
+Runs on a timer:
+
+```
+control_hz = 30 Hz
+```
+
+Every tick:
+
+```
+read latest steering angle
+read speed input (optional)
+apply stop/go gating
+compute curvature
+compute wheel speeds
+publish cmd_vel_left/right
+```
+
+---
+
+#### Internal state variables
+
+* `steering_angle`
+* `target_speed`
+* `traffic_mode`
+* `supply_mode`
+
+Traffic or supply command `"stop"` overrides all motion.
+
+---
+
+#### Curvature model
+
+Steering angle δ → curvature κ:
+
+```
+kappa = tan(delta) / wheelbase
+kappa *= kappa_gain
+```
+
+Angular velocity:
+
+```
+omega = v * kappa
+```
+
+Differential output:
+
+```
+v_left  = v - omega * track_width/2
+v_right = v + omega * track_width/2
+```
+
+---
+
+#### Turn-based speed reduction
+
+To avoid tipping or slipping:
+
+```
+speed_scale = lerp(1.0 → speed_scale_min)
+based on |steering_angle|
+```
+
+So tight turns automatically slow down.
+
+---
+
+#### Output saturation (ratio-preserving)
+
+If either wheel exceeds `max_speed`:
+
+```
+scale both sides proportionally
+```
+
+This preserves turning radius.
+
+---
+
+#### Deadzone handling
+
+```
+if abs(v_left) < cmd_vel_deadzone → 0
+if abs(v_right) < cmd_vel_deadzone → 0
+```
+
+Prevents motor jitter near zero.
+
+---
+
+### 6.3.3 object_follower.py (vision → wheel control)
+
+This node converts a **3D target position** into wheel velocities.
+
+Used for:
+
+* target tracking
+* person following
+* object pursuit
+* autonomous mission behaviors
+
+---
+
+#### Input coordinate handling
+
+Supports two modes:
+
+**Optical frame input (RealSense)**
+
+```
+x_right, y_down, z_forward
+```
+
+Converted to robot frame:
+
+```
+x_follow = z
+y_follow = -x
+```
+
+**Robot frame input**
+
+```
+x_forward
+y_left
+```
+
+---
+
+#### Camera offset compensation
+
+If camera is mounted forward:
+
+```
+x_follow += camera_offset_x
+y_follow += camera_offset_y
+```
+
+Ensures control uses robot base frame.
+
+---
+
+#### Control law
+
+Distance error:
+
+```
+dist_error = r - follow_distance
+```
+
+Heading error:
+
+```
+theta = atan2(y, x)
+```
+
+Control:
+
+```
+v = k_dist * dist_error
+omega = k_heading * theta
+```
+
+Wheel output:
+
+```
+v_left  = v - omega * wheelbase/2
+v_right = v + omega * wheelbase/2
+```
+
+---
+
+#### Turn-speed coupling
+
+When heading error is large:
+
+```
+reduce linear speed
+```
+
+This prevents:
+
+* overshoot
+* oscillation
+* unstable pursuit
+
+---
+
+#### Target lost safety
+
+If no target received within:
+
+```
+lost_timeout = 0.5 s
+```
+
+then:
+
+```
+publish zero velocity
+```
+
+This prevents runaway motion.
+
+---
+
+### 6.3.4 led_serial_bridge.py (state → LED Arduino)
+
+This node converts robot state into LED commands.
+
+Input:
+
+```
+/led_control  (std_msgs/String)
+```
+
+Commands:
+
+* `"roka"`
+* `"enemy"`
+* `"none"`
+
+---
+
+#### Serial reliability design
+
+* auto reconnect
+* non-blocking read
+* newline-based parsing
+* lowercase enforcement
+
+Packet format:
+
+```
+<cmd>\n
+```
+
+---
+
+## 6.4 Real Robot Design Philosophy
+
+All ROS2 nodes in this repository were written with the following priorities:
+
+1. Real hardware reliability
+2. Deterministic timing
+3. Safety under failure
+4. Serial robustness
+5. Minimal latency
+
+Unlike simulation-focused nodes, these nodes include:
+
+* watchdog timeouts
+* stale command detection
+* serial reconnect loops
+* hardware-safe defaults
+
+This ensures stable behavior in field deployment.
+
 ---
 
 ## 7. Build & Run
@@ -585,6 +999,11 @@ Unstable speed / oscillation:
 * Integrated LED state feedback
 * Implemented target-following and steering-to-diff conversion logic
 
+* Designed and implemented the electrical hardware:
+
+  * power and control circuit design (distribution, drivers, protection)
+  * full system wiring/harness build for field deployment
+  * battery pack fabrication and integration (spec, protection, mounting)
 ---
 
 ## License
