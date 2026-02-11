@@ -1,214 +1,235 @@
+```md
+# DolbotX 6WD ROS2 Control (Real Robot Control Stack)
+
+> ROS2 real-robot control stack for a 6-wheel differential-drive platform (DolbotX family).  
+> Handles the full pipeline from high-level outputs → wheel velocity → Arduino motor controller → physical robot.
+
+This repository contains only the **real-robot control / serial bridge / LED control / follower control** portion extracted from the full DolbotX project.
 
 ---
 
-# DolbotX 6WD ROS2 Control
+# 📸 Media
 
-Real-world ROS2 control stack for a 6-wheel autonomous robot platform.
-Designed for research deployment, robotics competitions, and modular open-source reuse.
+## Robot
+![robot](docs/images/robot_photo_1.jpg)
 
-This repository contains the **actual control system used on a physical robot**, including perception-driven steering, differential drive conversion, and serial motor control.
-
----
-
-## Demo
-
-### Multi-area autonomous driving (YouTube Short)
-
-[https://www.youtube.com/shorts/69BXtWKU-2o](https://www.youtube.com/shorts/69BXtWKU-2o)
-
-This demo shows:
-
-* Vision-based drivable area detection
-* Steering command generation
-* Differential wheel control
-* Real terrain driving
+## Award
+![award](docs/images/award_photo.jpg)
 
 ---
 
-## Real Robot
+# 🎥 Videos
 
-<img src="docs/robot_photo_1.jpg" width="600"/>
-
-<img src="docs/award_photo.jpg" width="600"/>
-
-Used in real competition environment and field testing.
+- Rough terrain driving: (add link or file)
+- Flat terrain driving: (add link or file)
+- Multi-area driving: https://www.youtube.com/watch?v=69BXtWKU-2o
 
 ---
 
-## System Architecture
+# 🧠 System Overview
 
-High-level perception and control run on the host PC.
-Low-level motor control runs on Arduino.
-
-Pipeline:
-
-camera → perception → steering angle → diff conversion → serial bridge → motor controller
-
-This distributed structure is typical for real robotic systems where microcontrollers handle motor loops.
-
----
-
-## ROS Graph
-
-<img src="docs/ros_graph.png" width="900"/>
-
-The graph above shows the actual running node structure.
-
-Key flow:
-
-1. Camera publishes image topics
-2. Vision node computes drivable area
-3. Steering angle generated
-4. steering_to_diff converts to wheel velocities
-5. wheel_serial_bridge sends to Arduino
-6. Motors execute
-
----
-
-## Repository Structure
+This repository is responsible for **ROS2 → real robot actuation**.
 
 ```
+
+Perception / Decision
+↓
+steering_to_diff
+↓
+wheel_serial_bridge
+↓
+Arduino Mega (motor controller)
+↓
+Physical robot motion
+
+```
+
+Additional pipelines:
+
+```
+
+Vision result → led_serial_bridge → LED Arduino
+Joystick → serial_bridge → wheel control
+3D target → object_follower → cmd_vel
+
+```
+
+---
+
+# 📂 Repository Structure
+
+```
+
 Arduino/
- ├── DolbotX_Wheel_Control
- ├── LEFT_MOTOR_FINAL
- ├── RIGHT_MOTOR_FINAL
- └── LED_Control
+├── DolbotX_Wheel_Control/
+├── LED_Control/
+├── LEFT_MOTOR_FINAL/
+└── RIGHT_MOTOR_FINAL/
 
 src/
- ├── serial_bridge
- ├── wheel_serial_bridge
- ├── steering_to_diff
- ├── object_follower
- └── led_serial_bridge
+├── serial_bridge/
+├── wheel_serial_bridge/
+├── steering_to_diff/
+├── object_follower/
+└── led_serial_bridge/
 
-docs/
- ├── ros_graph.png
- ├── robot_photo_1.jpg
- └── award_photo.jpg
+docs/images/
+├── robot_photo_1.jpg
+├── award_photo.jpg
+├── ros_graph.png
+├── led_node_graph.png
+└── control_node_graph.png
+
+```
+
+---
+
+# 🧩 ROS Graph
+
+## Full Graph
+![graph](docs/images/ros_graph.png)
+
+## LED Graph
+![led_graph](docs/images/led_node_graph.png)
+
+## Control Graph
+![control_graph](docs/images/control_node_graph.png)
+
+---
+
+# ⚙️ Packages
+
+## steering_to_diff
+Converts steering angle to left/right differential wheel velocity.
+
+Input:
+```
+
+/angle
+
+```
+
+Output:
+```
+
+/left_wheel_speed
+/right_wheel_speed
+
 ```
 
 ---
 
-## Packages
+## wheel_serial_bridge
+Sends differential wheel velocities to Arduino Mega via serial.
 
-### serial_bridge
+Input:
+```
 
-Base serial communication node between ROS2 and microcontrollers.
-
-### wheel_serial_bridge
-
-Sends wheel velocity commands to Arduino motor controller.
-
-### steering_to_diff
-
-Converts steering angle → left/right wheel velocities.
-
-### object_follower
-
-Generates motion commands based on detected targets.
-
-### led_serial_bridge
-
-Controls LED status via serial.
-
----
-
-## Hardware Architecture
-
-Host PC / Jetson
-
-* ROS2 nodes
-* perception
-* control
-
-Arduino
-
-* motor control
-* LED control
-
-Connections:
-
-* USB serial → Arduino
-* Camera → ROS2
-* Arduino → motor drivers
-
----
-
-## Build
+/left_wheel_speed
+/right_wheel_speed
 
 ```
+
+Output:
+```
+
+Serial → /dev/ttyUSB*
+
+```
+
+---
+
+## serial_bridge
+Joystick `/cmd_vel` → differential wheel command → serial.
+
+Input:
+```
+
+/cmd_vel
+
+```
+
+---
+
+## object_follower
+Generates velocity command to follow a 3D target.
+
+Input:
+```
+
+target position
+
+```
+
+Output:
+```
+
+/cmd_vel
+
+```
+
+---
+
+## led_serial_bridge
+Sends vision result to LED Arduino.
+
+Serial messages:
+```
+
+enemy
+roka
+none
+
+````
+
+---
+
+# 🔧 Build
+
+```bash
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
-```
+````
 
 ---
 
-## Run
+# 🚀 Run
 
-### Core control pipeline
+## Core control pipeline
 
-```
+```bash
 ros2 launch steering_to_diff steering_to_diff.launch.py
 ros2 launch wheel_serial_bridge bridge.launch.py
-ros2 run serial_bridge serial_bridge_node
 ros2 run led_serial_bridge led_serial_bridge
 ```
 
----
+## Teleop
 
-## Launch All
-
-Create `launch_all.sh` in repo root:
-
-```
-#!/bin/bash
-
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-
-ros2 launch steering_to_diff steering_to_diff.launch.py &
-ros2 launch wheel_serial_bridge bridge.launch.py &
-ros2 run serial_bridge serial_bridge_node &
-ros2 run led_serial_bridge led_serial_bridge &
-
-wait
+```bash
+ros2 run serial_bridge serial_bridge_node
 ```
 
-Run:
+## Object follower
 
-```
-chmod +x launch_all.sh
-./launch_all.sh
+```bash
+ros2 launch object_follower object_follower.launch.py
 ```
 
 ---
 
-## Arduino Firmware
+# 🔌 Serial Setup
 
-Firmware located in:
+Check ports:
 
-```
-Arduino/
-```
-
-Upload via Arduino IDE:
-
-* Select board
-* Select port
-* Upload
-
----
-
-## Serial Setup
-
-```
-ls /dev/ttyUSB* /dev/ttyACM*
+```bash
+ls /dev/ttyUSB*
+ls /dev/ttyACM*
 ```
 
-Permission:
+Grant permission:
 
-```
+```bash
 sudo usermod -aG dialout $USER
 ```
 
@@ -216,56 +237,50 @@ Re-login required.
 
 ---
 
-## Development Notes
+# 🧠 Arduino Firmware
 
-* Ubuntu 22.04
-* ROS2 Humble
-* Python 3.10
-* Use system Python for ROS2 nodes
-* Virtualenv may break rclpy imports
+```
+Arduino/DolbotX_Wheel_Control
+Arduino/LED_Control
+```
 
----
-
-## Research Context
-
-Developed for real robotic deployment including:
-
-* Rough terrain navigation
-* Vision-based driving
-* Autonomous robotics competition
-* Modular ROS2 architecture
-
-The system has been validated on physical hardware.
+Upload each sketch using Arduino IDE.
 
 ---
 
-## Intended Use
+# 🛠 Debug
 
-This repository is maintained for:
+Check topics:
 
-* Robotics portfolio
-* Research lab submission
-* Open-source reuse
-* Educational robotics
+```bash
+ros2 topic list
+ros2 topic echo /angle
+```
 
----
+Graph:
 
-## Roadmap
-
-Planned improvements:
-
-* Hardware wiring diagram
-* Full architecture diagram
-* Topic interface tables
-* Simulation integration
-* CI pipeline
+```bash
+rqt_graph
+```
 
 ---
 
-## Author
+# 🏁 Competition Use
 
-Robotics Engineer
-ROS2 / Embedded / Autonomous Systems
+This stack was used in a real-robot competition environment.
+
+* 6WD differential drive
+* real-time serial motor control
+* LED state feedback
+* target following control
 
 ---
+
+# 📜 License
+
+MIT
+
+```
+::contentReference[oaicite:0]{index=0}
+```
 
