@@ -175,6 +175,15 @@ hardware platform to embedded control and ROS-based autonomy.
 [Physical robot]
 ````
 
+<p align="center">
+  <img src="docs/diagrams/steering_nodegraph.png" width="75%">
+</p>
+
+<p align="center">
+  Steering input to wheel velocity control pipeline
+</p>
+
+
 ### 2.2 LED Feedback Pipeline
 
 ```txt
@@ -188,6 +197,14 @@ led_serial_bridge
         v
 Arduino LED_Control.ino
 ```
+
+<p align="center">
+  <img src="docs/diagrams/led_nodegraph.png" width="55%">
+</p>
+
+<p align="center">
+  LED state feedback ROS2 node structure
+</p>
 
 ---
 
