@@ -65,6 +65,11 @@ mechanical design, embedded control, and ROS2-based autonomy.
   <img src="docs/images/award.jpg" width="50%" alt="Competition Award">
 </p>
 
+<p align="center">
+  <b>Awarded 2nd Place – Hanwha Defense Robotics Award</b><br>
+  Korea Intelligent Robot Competition, Defense Robotics Division
+</p>
+
 This robot was developed for and demonstrated at the  
 **Korea Intelligent Robot Competition – Defense Robot Division**,  
 organized by the Korea Institute of Robotics & Technology Convergence (KIRO).
